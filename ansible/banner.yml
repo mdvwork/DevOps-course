@@ -1,0 +1,20 @@
+
+---
+- name: Configure the workshop banner
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    workshop_message: "Group: AAA | Student: student-A | Banner version: 3 | K4-05 defense"
+
+  tasks:
+    - name: Create workshop banner
+      ansible.builtin.copy:
+        dest: /data/banner.txt
+        content: "{{ workshop_message }}\n"
+        mode: "0644"
+        owner: "10001"
+        group: "10001"
+
