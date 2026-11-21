@@ -49,3 +49,76 @@
 **Обычные команды выполняются из корня вашей копии репозитория.** Команды внутри Linux-контейнера явно отмечены. Не устанавливайте ПО на компьютеры кабинета самостоятельно. Если Docker недоступен, сообщите преподавателю.
 
 Преподавателю: [подготовка кабинета](teacher/PREFLIGHT.md), [план курса](teacher/PROGRAM_MAP.md), [отчёт о проверке](teacher/VALIDATION.md).
+
+## Мой результат
+
+### 1. Запуск приложения
+
+Сборка образа: `docker build -f lab/Dockerfile -t devops-student:v1 lab`.
+
+Запуск: `docker compose -f compose.student.yaml up -d`.
+
+Проверка: `docker compose -f compose.student.yaml ps`.
+
+Web доступен по адресу `http://localhost:8080`. Проверка API: `curl -i http://localhost:8080/health`.
+
+### 2. Архитектура и данные
+
+Сервисы `api` и `web` используют один образ `devops-student:v1`, но разные переменные окружения `ROLE` и `DATA_DIR`.
+
+Web обращается к API по адресу `http://api:8000`. Имя `api` разрешается внутренней сетью Docker Compose.
+
+API сохраняет заявки в `/data`, подключённом к именованному Docker volume `requests`. Поэтому данные сохраняются при перезапуске контейнера. Приложение работает от непривилегированного пользователя `10001:10001`.
+
+### 3. Мониторинг
+
+Запуск: `docker compose -f compose.student.yaml --profile monitoring up -d`.
+
+Prometheus: `http://localhost:9090`. Grafana: `http://localhost:3000`.
+
+Prometheus собирает метрики API и Web. Проверка доступности целей: `up{job="workshop"}`.
+
+Проверка счётчика успешных запросов Web: `devops_http_requests_total{role="web",status="200"}`.
+
+Экспортированная панель Grafana: [K4-02-dashboard.json](evidence/K4-02-dashboard.json).
+
+### 4. Ansible
+
+Playbook `ansible/banner.yml` управляет файлом `/data/banner.txt` в общем Docker volume.
+
+Применение: `docker compose -f compose.student.yaml --profile tools run --rm ansible banner.yml`.
+
+В K4-05 сообщение изменено на `Group: AAA | Student: student-A | Banner version: 3 | K4-05 defense`. API подтвердил изменение ответом HTTP 200: `curl -i http://localhost:8080/api/banner`.
+
+### 5. Восстановление после сбоя
+
+Остановка API: `docker compose -f compose.student.yaml stop api`.
+
+При остановленном API запрос Web к `/api/requests` возвращает HTTP 503, а в логах появляется ошибка upstream.
+
+Восстановление: `docker compose -f compose.student.yaml start api`.
+
+После восстановления API снова отвечает, а заявки сохраняются в volume `requests`.
+
+### 6. Исходники, тесты, образ и сервис
+
+`Student CI` запускает тесты на Python 3.13, затем собирает Docker-образ с тегом Git SHA (`github.sha`).
+
+Локально тесты `tests/test_app.py` на Python 3.14.4 завершились успешно: 7 тестов пройдены.
+
+Для проверки текущего коммита `50f6805` локально собран образ `devops-student:50f6805`. Его метка `course.student`, пользователь и команда запуска проверены через `docker image inspect`. Временный контейнер на основе этого образа вернул HTTP 200 на `/health`.
+
+### 7. CI и отчёты
+
+Workflow: [Student CI](.github/workflows/student-ci.yml), [Course checks](.github/workflows/course-check.yml).
+
+Отчёты:
+- [K4-01 — логи и доступность](evidence/K4-01.md)
+- [K4-02 — мониторинг](evidence/K4-02.md)
+- [K4-03 — Ansible](evidence/K4-03.md)
+- [K4-04 — восстановление после сбоя](evidence/K4-04.md)
+- [K4-05 — итоговая защита](evidence/K4-05.md)
+
+### 8. Проверка перед выпуском
+
+Перед выпуском необходимо провести сквозное тестирование кандидата на релиз в staging-среде, близкой к production: проверить взаимодействие сервисов, сохранность и восстановление данных из резервной копии, безопасность конфигурации, нагрузку и возможность отката версии.
